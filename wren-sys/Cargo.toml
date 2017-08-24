@@ -1,0 +1,11 @@
+[package]
+name = "wren-sys"
+version = "0.1.0"
+authors = ["Josh Chase <josh@jec.pw>"]
+
+[dependencies]
+
+[build-dependencies]
+bindgen = "0.29"
+
+[lib]
