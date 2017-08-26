@@ -6,15 +6,16 @@ use std::path::PathBuf;
 use std::process::Command;
 
 fn main() {
+    let top_dir = env::var("CARGO_MANIFEST_DIR").expect("manifest directory");
     assert!(
         Command::new("make")
-            .current_dir("./wren")
+            .current_dir(format!("{}/wren", top_dir))
             .args(&["vm"])
             .status()
             .expect("failed to run 'make'")
             .success()
     );
-    println!("cargo:rustc-link-search=native=./wren/lib");
+    println!("cargo:rustc-link-search=native={}/wren/lib", top_dir);
     println!("cargo:rustc-link-lib=static=wren");
 
     // The bindgen::Builder is the main entry point
@@ -23,7 +24,7 @@ fn main() {
     let bindings = bindgen::Builder::default()
         // The input header we would like to generate
         // bindings for.
-        .header("./wren/src/include/wren.h")
+        .header(format!("{}/wren/src/include/wren.h", top_dir))
         // Finish the builder and generate the bindings.
         .generate()
         // Unwrap the Result and panic on failure.
