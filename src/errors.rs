@@ -1,6 +1,6 @@
 use std::os::raw::{c_char, c_int};
-use std::ffi::{CStr, CString};
 use wren_sys::WrenErrorType;
+use util::*;
 
 #[derive(Debug)]
 pub struct Trace {
@@ -9,15 +9,11 @@ pub struct Trace {
     pub line: u32,
 }
 
-unsafe fn lossy_string(input: *const c_char) -> String {
-    CStr::from_ptr(input).to_string_lossy().into_owned()
-}
-
 impl Trace {
     pub(crate) unsafe fn new(function: *const c_char, module: *const c_char, line: c_int) -> Trace {
         Trace {
-            function: CStr::from_ptr(function).to_string_lossy().into_owned(),
-            module: CStr::from_ptr(module).to_string_lossy().into_owned(),
+            function: lossy_string(function),
+            module: lossy_string(module),
             line: line as u32,
         }
     }

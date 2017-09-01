@@ -1,4 +1,3 @@
-use std::any::Any;
 use errors::*;
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -6,7 +5,7 @@ use std::os::raw::{c_char, c_int, c_void};
 use errors::WrenError;
 use std::ffi::{CStr, CString};
 use std::mem;
-use wren_sys::{self, WrenConfiguration, WrenErrorType, WrenInterpretResult, WrenVM, wrenFreeVM,
+use wren_sys::{WrenConfiguration, WrenErrorType, WrenInterpretResult, WrenVM, wrenFreeVM,
                wrenGetUserData, wrenInitConfiguration, wrenNewVM, wrenSetUserData};
 use foreign::*;
 
@@ -30,7 +29,7 @@ unsafe extern "C" fn error_callback(
     ((*user_data).error_cb)(error);
 }
 
-unsafe extern "C" fn write_callback(vm: *mut WrenVM, text: *const c_char) {
+unsafe extern "C" fn write_callback(_vm: *mut WrenVM, text: *const c_char) {
     let output = CStr::from_ptr(text).to_string_lossy();
     print!("{}", output);
 }
@@ -53,17 +52,29 @@ impl WrenBuilder {
         }
     }
 
-    pub fn bind_class<T: Sized + Default + ::std::fmt::Debug>(
+    pub fn bind_class<T: WrenClass>(mut self, module: &str, class_name: &str) -> Self {
+        self.foreigns.bind_class::<T>(module, class_name);
+        self
+    }
+
+    pub fn bind_method(
         mut self,
         module: &str,
         class_name: &str,
+        is_static: bool,
+        name: &str,
+        method: ForeignMethod,
     ) -> Self {
-        self.foreigns.bind_class::<T>(module, class_name);
+        self.foreigns
+            .bind_method(module, class_name, is_static, name, method);
         self
     }
 
     pub fn build(self) -> Wren {
         let mut inner = self.inner;
+
+        // build error callback. It will be fetched from the UserData and will
+        // be responsible for updating the error refcell.
         let error = Rc::new(RefCell::new(None));
         let error_ref = error.clone();
         let error_cb = Box::new(move |err: Result<Trace, WrenError>| {
@@ -80,6 +91,7 @@ impl WrenBuilder {
                 Err(err) => *err_mut = Some(err),
             }
         });
+
         let user_data = Box::new(UserData {
             foreigns: self.foreigns,
             error_cb,
@@ -88,6 +100,7 @@ impl WrenBuilder {
         inner.errorFn = Some(error_callback);
         inner.writeFn = Some(write_callback);
         inner.bindForeignClassFn = Some(bind_foreign_class);
+        inner.bindForeignMethodFn = Some(bind_foreign_method);
 
         let sys_vm = unsafe { wrenNewVM(&mut inner as *mut WrenConfiguration) };
         unsafe { wrenSetUserData(sys_vm, Box::into_raw(user_data) as *mut c_void) };
@@ -125,31 +138,4 @@ impl Drop for Wren {
             wrenFreeVM(self.inner);
         }
     }
-}
-
-#[test]
-fn stuff() {
-    {
-        use std::collections::HashMap;
-        ::env_logger::init().unwrap();
-        let mut vm = WrenBuilder::new()
-            .bind_class::<usize>("main", "Bar")
-            .bind_class::<HashMap<String, String>>("main", "Foo")
-            .build();
-        vm.interpret(
-            r#"
-foreign class Foo {
-    construct new() {}
-}
-
-foreign class Bar {
-    construct new() {}
-}
-
-var bar = Bar.new()
-var foo = Foo.new()
-    "#,
-        ).unwrap();
-    }
-    panic!();
 }
