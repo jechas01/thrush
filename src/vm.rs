@@ -34,8 +34,8 @@ unsafe extern "C" fn write_callback(_vm: *mut WrenVM, text: *const c_char) {
     print!("{}", output);
 }
 
-pub(crate) struct UserData {
-    pub(crate) foreigns: Foreign,
+pub struct UserData {
+    pub foreigns: Foreign,
     error_cb: Box<Fn(Result<Trace, WrenError>)>,
 }
 
@@ -52,8 +52,8 @@ impl WrenBuilder {
         }
     }
 
-    pub fn bind_class<T: WrenClass>(mut self, module: &str, class_name: &str) -> Self {
-        self.foreigns.bind_class::<T>(module, class_name);
+    pub fn bind_class<T: WrenClass>(mut self) -> Self {
+        self.foreigns.bind_class::<T>();
         self
     }
 

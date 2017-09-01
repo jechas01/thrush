@@ -2,25 +2,27 @@ use util::*;
 use std::os::raw::{c_char, c_void};
 use wren_sys;
 use std::collections::HashMap;
+use std::ffi::CString;
 
 #[derive(Debug, Eq, PartialEq, Hash)]
-struct MethodDesc {
-    pub module: String,
-    pub class_name: String,
+pub struct MethodDesc {
+    pub module: CString,
+    pub class_name: CString,
     pub is_static: bool,
-    pub signature: String,
+    pub signature: CString,
 }
 
+#[doc(hidden)]
 #[derive(Debug, Eq, PartialEq, Hash)]
-struct ClassDesc {
-    pub module: String,
-    pub class_name: String,
+pub struct ClassDesc {
+    pub module: CString,
+    pub class_name: CString,
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct Foreign {
-    classes: HashMap<ClassDesc, wren_sys::WrenForeignClassMethods>,
-    methods: HashMap<MethodDesc, wren_sys::WrenForeignMethodFn>,
+pub struct Foreign {
+    pub classes: HashMap<ClassDesc, wren_sys::WrenForeignClassMethods>,
+    pub methods: HashMap<MethodDesc, wren_sys::WrenForeignMethodFn>,
 }
 
 pub struct ForeignMethod {
@@ -29,11 +31,15 @@ pub struct ForeignMethod {
 }
 
 pub trait WrenClass: Default + Sized {
-    const WREN_ID: usize;
+    const ID: usize;
+    const MODULE: &'static str;
+    const CLASS: &'static str;
 }
 
 impl WrenClass for () {
-    const WREN_ID: usize = ::std::usize::MAX;
+    const ID: usize = ::std::usize::MAX;
+    const MODULE: &'static str = "<none>";
+    const CLASS: &'static str = "Unit";
 }
 
 #[doc(hidden)]
@@ -52,7 +58,7 @@ where
         ForeignClass {
             valid: true,
             data,
-            id: T::WREN_ID,
+            id: T::ID,
         }
     }
 
@@ -80,18 +86,18 @@ where
     fn default() -> Self {
         ForeignClass {
             data: Default::default(),
-            id: T::WREN_ID,
+            id: T::ID,
             valid: true,
         }
     }
 }
 
 impl Foreign {
-    pub(crate) fn bind_class<T: WrenClass>(&mut self, module: &str, class_name: &str) {
+    pub(crate) fn bind_class<T: WrenClass>(&mut self) {
         self.classes.insert(
             ClassDesc {
-                module: module.into(),
-                class_name: class_name.into(),
+                module: from_str(T::MODULE),
+                class_name: from_str(T::CLASS),
             },
             T::bind_foreign(),
         );
@@ -107,10 +113,10 @@ impl Foreign {
     ) {
         self.methods.insert(
             MethodDesc {
-                module: module.into(),
-                class_name: class_name.into(),
+                module: from_str(module),
+                class_name: from_str(class_name),
                 is_static: is_static,
-                signature: format!("{}{}", name, method.signature),
+                signature: from_str(&format!("{}{}", name, method.signature)),
             },
             Some(method.method),
         );
@@ -161,7 +167,7 @@ pub(crate) unsafe extern "C" fn finalize_foreign_class<T: WrenClass>(ptr: *mut c
     use std::mem::{swap, uninitialized};
     let mut v: ForeignClass<T> = uninitialized();
     swap(&mut v, &mut *(ptr as *mut ForeignClass<T>));
-    if v.id != T::WREN_ID {
+    if v.id != T::ID {
         panic!("invalid cast of foreign class in finalizer")
     }
 }
@@ -175,8 +181,8 @@ pub(crate) unsafe extern "C" fn bind_foreign_class(
     let user_data = wren_sys::wrenGetUserData(vm) as *const ::vm::UserData;
     let foreigns = &(*user_data).foreigns;
     let desc = ClassDesc {
-        module: lossy_string(module),
-        class_name: lossy_string(className),
+        module: c_string(module),
+        class_name: c_string(className),
     };
     match foreigns.classes.get(&desc) {
         Some(binding) => *binding,
@@ -198,10 +204,10 @@ pub(crate) unsafe extern "C" fn bind_foreign_method(
     let user_data = wren_sys::wrenGetUserData(vm) as *const ::vm::UserData;
     let foreigns = &(*user_data).foreigns;
     let desc = MethodDesc {
-        module: lossy_string(module),
-        class_name: lossy_string(className),
+        module: c_string(module),
+        class_name: c_string(className),
         is_static: isStatic,
-        signature: lossy_string(signature),
+        signature: c_string(signature),
     };
     match foreigns.methods.get(&desc) {
         Some(binding) => *binding,
